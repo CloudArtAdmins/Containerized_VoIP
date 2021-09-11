@@ -1,8 +1,15 @@
-FROM docker.io/library/node:10
+FROM docker.io/library/node:alpine
 
 # Choose the port 
 EXPOSE 8888
 
-# Add app to image
-COPY . /app
+# Install app dependencies
+WORKDIR /app
+COPY package*.json .
+RUN npm install 
 
+# Install app
+COPY . .
+
+
+CMD [ "node", "app.js" ]
