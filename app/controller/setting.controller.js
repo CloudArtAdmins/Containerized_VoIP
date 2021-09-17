@@ -288,8 +288,9 @@ exports.sendSms = async (req, res) => {
                     const client = require('twilio')(settingCheck.twilio_sid, settingCheck.twilio_token);
                     var arrMessageData = [];
                     for(var i=0; i < req.body.numbers.length; i++ ) {
-                        var sendNumber = req.body.numbers[i].length
                         var toNumber = req.body.numbers[i];
+                        toNumber = toNumber.replace(/\s/g,'').replace(/\-/g,'').replace(/\)/g,'').replace(/\(/g,'')
+                        var sendNumber = toNumber.length
                         if(sendNumber <= 10){
                             toNumber = `+1${toNumber}`;
                         }
@@ -326,8 +327,10 @@ exports.sendSms = async (req, res) => {
                     const Telnyx = telnyx(settingCheck.api_key);
                     var arrMessageData = [];
                     for(var i=0; i < req.body.numbers.length; i++ ) {
-                        var sendNumber = req.body.numbers[i].length
+                        //var sendNumber = req.body.numbers[i].length
                         var toNumber = req.body.numbers[i];
+                        toNumber = toNumber.replace(/\s/g,'').replace(/\-/g,'').replace(/\)/g,'').replace(/\(/g,'')
+                        var sendNumber = toNumber.length
                         if(sendNumber <= 10){
                             toNumber = `+1${toNumber}`;
                         }
@@ -491,12 +494,14 @@ exports.smsStatus = async (req, res) => {
     }else{
         var data = req.body.data.payload;
         var status = data.to[0].status;
-        var sid = data.to[0].status;
+        var sid = data.id;
     }
     var message = await Message.findOne({sid: sid});
-    message.status = status;
-    message.save();
-   const VoiceResponse = twilio.twiml.VoiceResponse;
+    if(message){
+        message.status = status;
+        message.save();
+    }
+    const VoiceResponse = twilio.twiml.VoiceResponse;
     const response = new VoiceResponse();
     console.log(response.toString());
     res.set('Content-Type', 'text/xml');
