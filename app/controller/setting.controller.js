@@ -12,8 +12,8 @@ const crypto = require('crypto');
 var Setting = require('../model/setting.model');
 var User = require('../model/user.model');
 var Message = require('../model/message.model');
-var Number = require('../model/number.model');
 const Numbers = require('twilio/lib/rest/Numbers');
+var Contact = require('../model/contact.model');
 const { exists } = require('../model/setting.model');
 exports.deleteKey = async (req, res) => {
     var settingCheck = await Setting.findOne({user:req.body.user,_id:req.body.profile_id})
@@ -288,8 +288,9 @@ exports.sendSms = async (req, res) => {
                     const client = require('twilio')(settingCheck.twilio_sid, settingCheck.twilio_token);
                     var arrMessageData = [];
                     for(var i=0; i < req.body.numbers.length; i++ ) {
-                        var sendNumber = req.body.numbers[i].length
                         var toNumber = req.body.numbers[i];
+                        toNumber = toNumber.replace(/\s/g,'').replace(/\-/g,'').replace(/\)/g,'').replace(/\(/g,'')
+                        var sendNumber = toNumber.length
                         if(sendNumber <= 10){
                             toNumber = `+1${toNumber}`;
                         }
@@ -316,6 +317,16 @@ exports.sendSms = async (req, res) => {
                                 message: req.body.message,
                                 setting: settingCheck._id
                             };
+                            var contact = await Contact.findOne({user: req.body.user, number: toNumber});
+                            if(contact){
+                                messageData.contact = contact._id
+                            }else{
+                                toNumber = toNumber.slice(-10)
+                                var contact2 = await Contact.findOne({user: req.body.user, number: toNumber});
+                                if(contact2){
+                                    messageData.contact = contact2._id
+                                }
+                            }
                             if(req.body.media.length > 0){
                                 messageData.media = JSON.stringify(req.body.media)
                             }
@@ -326,8 +337,10 @@ exports.sendSms = async (req, res) => {
                     const Telnyx = telnyx(settingCheck.api_key);
                     var arrMessageData = [];
                     for(var i=0; i < req.body.numbers.length; i++ ) {
-                        var sendNumber = req.body.numbers[i].length
+                        //var sendNumber = req.body.numbers[i].length
                         var toNumber = req.body.numbers[i];
+                        toNumber = toNumber.replace(/\s/g,'').replace(/\-/g,'').replace(/\)/g,'').replace(/\(/g,'')
+                        var sendNumber = toNumber.length
                         if(sendNumber <= 10){
                             toNumber = `+1${toNumber}`;
                         }
@@ -353,6 +366,16 @@ exports.sendSms = async (req, res) => {
                                 message: req.body.message,
                                 setting: settingCheck._id
                             };
+                            var contact = await Contact.findOne({user: req.body.user, number: toNumber});
+                            if(contact){
+                                messageData.contact = contact._id
+                            }else{
+                                toNumber = toNumber.slice(-10)
+                                var contact2 = await Contact.findOne({user: req.body.user, number: toNumber});
+                                if(contact2){
+                                    messageData.contact = contact2._id
+                                }
+                            }
                             if(req.body.media.length > 0){
                                 messageData.media = JSON.stringify(req.body.media)
                             }
@@ -452,6 +475,18 @@ exports.receiveSms = async (req, res) => {
             setting: settingCheck._id,
             media: JSON.stringify(media)
         };
+        var contact = await Contact.findOne({user: settingCheck.user, number: fromnumber});
+        if(contact){
+            messageData2.contact = contact._id
+        }else{
+            var fromnumber2 = fromnumber.slice(-10)
+            console.log(fromnumber2)
+            var contact2 = await Contact.findOne({user: settingCheck.user, number: fromnumber2});
+            console.log(contact2)
+            if(contact2){
+                messageData2.contact = contact2._id
+            }
+        }
         global.io.to(settingCheck.user.toString()).emit('user_message',{message: messageText, number:fromnumber});
 
         // global.io.to(settingCheck.number).emit('new_message',{message: messageText, number:fromnumber});
@@ -491,12 +526,14 @@ exports.smsStatus = async (req, res) => {
     }else{
         var data = req.body.data.payload;
         var status = data.to[0].status;
-        var sid = data.to[0].status;
+        var sid = data.id;
     }
     var message = await Message.findOne({sid: sid});
-    message.status = status;
-    message.save();
-   const VoiceResponse = twilio.twiml.VoiceResponse;
+    if(message){
+        message.status = status;
+        message.save();
+    }
+    const VoiceResponse = twilio.twiml.VoiceResponse;
     const response = new VoiceResponse();
     console.log(response.toString());
     res.set('Content-Type', 'text/xml');
@@ -514,6 +551,7 @@ exports.getNumberList = async (req, res) => {
             "message":{"$first":"$message"},
             "id":{"$first":"$_id"},
             "created_at":{"$first":"$created_at"},
+            "contact":{"$first":"$contact"},
             "telnyx_number":{"$first":"$telnyx_number"},
             "id": {"$first":"$_id"},
             "isview": {
@@ -522,8 +560,9 @@ exports.getNumberList = async (req, res) => {
                 }
             }
             }
-        },        
+        }  
     ]);
+    await Contact.populate(message, {path: "contact"});
     message.sort(function (a, b) {
         return b.created_at - a.created_at;
     });

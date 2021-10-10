@@ -48,6 +48,7 @@
 
 <script>
 import { required } from 'vuelidate/lib/validators'
+import { post } from '../../core/module/common.module'
 export default {
   data () {
     return {
@@ -82,7 +83,6 @@ export default {
     this.getallProfile()
   },
   methods: {
-
     onClickButton (profile) {
       this.$emit('clicked', profile)
     },
@@ -100,10 +100,14 @@ export default {
       }
     },
     getallProfile () {
-      // eslint-disable-next-line no-undef
-      axios.post(`${this.baseurl}/api/profile/getdata`, {}, this.headers)
-        .then(response => {
-          this.profiles = response.data.data
+      var request = {
+        data: {},
+        url: 'profile/getdata'
+      }
+      this.$store
+        .dispatch(post, request)
+        .then((response) => {
+          this.profiles = response.data
           if (!this.activeProfile) {
             var profileLocal = localStorage.getItem('activeProfile')
             if (profileLocal) {
@@ -119,16 +123,8 @@ export default {
             this.$emit('clicked', this.activeProfile)
           }
         })
-        .catch(error => {
-          if (error.response.status === 401) {
-            this.$swal({
-              icon: 'error',
-              title: 'Oops...',
-              text: error.response.data.message
-            })
-            this.$cookie.delete('access_token')
-            this.$router.push('/')
-          }
+        .catch((e) => {
+          console.log(e)
         })
     },
     handleSubmit (e) {
@@ -137,9 +133,13 @@ export default {
       if (this.$v.$invalid) {
         return
       }
-      // eslint-disable-next-line no-undef
-      axios.post(`${this.baseurl}/api/profile/create`, this.form, this.headers)
-        .then(response => {
+      var request = {
+        data: this.form,
+        url: 'profile/create'
+      }
+      this.$store
+        .dispatch(post, request)
+        .then((response) => {
           this.$swal({
             icon: 'success',
             title: 'Success',
@@ -148,24 +148,8 @@ export default {
           this.$refs['add-profile'].hide()
           this.getallProfile()
         })
-        .catch(error => {
-          if (error.response.status === 401) {
-            this.$swal({
-              icon: 'error',
-              title: 'Oops...',
-              text: error.response.data.message
-            })
-            this.$cookie.delete('access_token')
-            this.$router.push('/')
-          }
-          if (error.response.status === 400) {
-            this.$swal({
-              icon: 'error',
-              title: 'Oops...',
-              text: 'Settings not saved'
-            })
-            // this.$router.push('/')
-          }
+        .catch((e) => {
+          console.log(e)
         })
     }
   }
