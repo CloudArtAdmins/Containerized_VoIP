@@ -11,8 +11,6 @@ const server = require('http').createServer(app);
 
 global.io = require('socket.io')(server,{ cors: { origin: '*' } });
 
-console.log(`NODE_ENV=${config.NODE_ENV}`);
-
 var mongoose = require('./config/db.config');
 
 const db = mongoose.connection;
@@ -28,11 +26,11 @@ app.use(cors({ origin: ['http://localhost:8080'], }))
 io.on('connection', socket => {
   console.log('a user connected');
   socket.on('join_channel', (channel) => {
-    console.log(`${channel} user joied chanel`);
+    console.log(`${channel} user joined channel`);
     socket.join(channel);
   });
   socket.on('join_profile_channel', (channel) => {
-    console.log(`${channel} user joied chanel`);
+    console.log(`${channel} user joined channel`);
     socket.join(channel);
   });
   
@@ -53,6 +51,8 @@ require("./app/routes/auth.route")(app);
 require("./app/routes/setting.route")(app);
 require("./app/routes/profile.route")(app);
 require("./app/routes/media.route")(app);
+require("./app/routes/contact.route")(app);
+require("./app/routes/email.route")(app);
 /*/api/auth/login*/
 app.get('/', function (req, res) {
   //res.send('Hello World')

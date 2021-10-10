@@ -3,9 +3,17 @@
     <div class="profile">
       <div class="d-flex flex-row bd-highlight align-items-center align-self-center">
         <div class="mt-2">
-          <b-icon font-scale="1" icon="person-lines-fill" aria-hidden="true" class="m-2" title="Contacts"></b-icon>
-          <b-icon font-scale="1" icon="telephone" aria-hidden="true" class="m-2" title="Call"></b-icon>
-          <b-icon  v-b-modal.modal-2 font-scale="1" icon="pencil-square" aria-hidden="true" class="m-2" title="Compose" style="cursor:pointer;"></b-icon>
+          <div class="d-flex flex-row bd-highlight">
+            <div class="bd-highlight">
+              <contact :contacts="contacts" @onaddContact="onaddContact"></contact>
+            </div>
+            <div class="bd-highlight">
+              <b-icon font-scale="1" icon="telephone" aria-hidden="true" class="m-2" title="Call"></b-icon>
+            </div>
+            <div class="bd-highlight">
+              <b-icon  v-b-modal.modal-2 font-scale="1" icon="pencil-square" aria-hidden="true" class="m-2" title="Compose" style="cursor:pointer;"></b-icon>
+            </div>
+          </div>
         </div>
         <div class="icons mt-2">
           <b-dropdown class="dropDown" variant="primary">
@@ -39,6 +47,16 @@
             </b-dropdown-item-button>
           </b-dropdown>
         </div>
+        <!--<div class="icons mt-2">
+          <b-dropdown size="sm" class="dropDown"  variant="primary" toggle-class="text-decoration-none" no-caret>
+          <template #button-content>
+            <b-icon icon="three-dots-vertical" font-scale="1"></b-icon>
+          </template>
+          <b-dropdown-item href="#">Action</b-dropdown-item>
+          <b-dropdown-item href="#">Another action</b-dropdown-item>
+          <b-dropdown-item href="#">Something else here...</b-dropdown-item>
+        </b-dropdown>
+        </div>-->
       </div>
     </div>
     <div class="wrap-search">
@@ -86,8 +104,9 @@
         ></b-icon>
         <div class="contact-preview">
           <div class="contact-text">
-            <h1 class="font-name">{{ item._id }}</h1>
-            <p class="font-preview">{{ item.message }}</p>
+            <h1 class="font-name" v-if="item.contact">{{item.contact.first_name}} {{item.contact.last_name}}</h1>
+            <h1 v-else class="font-name">{{ item._id }}</h1>
+            <p class="font-preview">{{ getValidString(item.message)  }}</p>
           </div>
         </div>
         <div class="contact-time">
@@ -321,9 +340,13 @@
 <script>
 import ThemeButton from '@/components/ThemeButton.vue'
 import ProfileView from '@/components/setting/ProfileView.vue'
+import Contact from '@/components/setting/Contact.vue'
 import { required } from 'vuelidate/lib/validators'
+import { get, post } from '../../core/module/common.module'
 export default {
-  components: { ProfileView, ThemeButton },
+  components: {
+    ProfileView, ThemeButton, Contact
+  },
   data () {
     return {
       user: {
@@ -334,6 +357,7 @@ export default {
         twilio_number: '',
         profile: ''
       },
+      contacts: [],
       activeChat: '',
       submitted: false,
       messageListLoader: true,
@@ -374,33 +398,48 @@ export default {
         token: this.access_token
       }
     }
+    this.onaddContact()
   },
   methods: {
-    // getValidString (str) {
-    //   if (str.length > 10) {
-    //     var newStr2 = str.substring(0, str.length - (str.length - 10)) + '..'
-    //   } else {
-    //     // eslint-disable-next-line no-redeclare
-    //     var newStr2 = str
-    //   }
-    //   return newStr2
-    // },
-    getOneProfile () {
-      // eslint-disable-next-line no-undef
-      axios.post(`${this.baseurl}/api/profile/getdata-one`, { setting: this.activeProfile._id }, this.headers)
-        .then(response => {
-          this.activeProfile = response.data.data
+    onaddContact () {
+      // this.$emit('my_signal')
+      // this.$emit('clicked2', 'someValue')
+      var request = {
+        url: 'contact/get-all'
+      }
+      this.$emit('my_signal')
+      this.$emit('my_signal')
+      this.$store
+        .dispatch(get, request)
+        .then((data) => {
+          this.contacts = data.data
+          this.$emit('onaddContact', data.data)
         })
-        .catch(error => {
-          if (error.response.status === 401) {
-            this.$swal({
-              icon: 'error',
-              title: 'Oops...',
-              text: error.response.data.message
-            })
-            this.$cookie.delete('access_token')
-            this.$router.push('/')
-          }
+        .catch((e) => {
+          console.log(e)
+        })
+    },
+    getValidString (str) {
+      if (str.length > 10) {
+        var newStr2 = str.substring(0, str.length - (str.length - 10)) + '..'
+      } else {
+        // eslint-disable-next-line no-redeclare
+        var newStr2 = str
+      }
+      return newStr2
+    },
+    getOneProfile () {
+      var request = {
+        data: { setting: this.activeProfile._id },
+        url: 'profile/getdata-one'
+      }
+      this.$store
+        .dispatch(post, request)
+        .then((response) => {
+          this.activeProfile = response.data
+        })
+        .catch((e) => {
+          console.log(e)
         })
     },
     refreshProfile () {
@@ -414,6 +453,7 @@ export default {
       this.activeProfile = value
       this.messageListLoader = true
       this.getNumberList()
+      value.refresh = true
       this.$emit('activeChat', value)
       this.getSetting()
     },
@@ -425,6 +465,8 @@ export default {
       this.activeChat = id._id
       localStorage.setItem('activenumber', JSON.stringify(id))
       this.$emit('clicked', id)
+      // this.$emit('messageRefresh', true)
+      // this.$emit('message', id)
     },
     logout () {
       this.$cookie.delete('access_token')
@@ -433,49 +475,40 @@ export default {
     },
     getNumberList () {
       this.numbers = []
-      // eslint-disable-next-line no-undef
-      axios.post(`${this.baseurl}/api/setting/sms-number-list`, {user: this.userdata._id, setting: this.activeProfile._id}, this.headers)
-        .then(response => {
-          this.numbers = response.data
+      var request = {
+        data: {user: this.userdata._id, setting: this.activeProfile._id},
+        url: 'setting/sms-number-list'
+      }
+      this.$store
+        .dispatch(post, request)
+        .then((response) => {
+          this.numbers = response
           this.messageListLoader = false
         })
-        .catch(error => {
-          if (error.response.status === 401) {
-            this.$swal({
-              icon: 'error',
-              title: 'Oops...',
-              text: error.response.data.message
-            })
-            this.$cookie.delete('access_token')
-            this.$router.push('/')
-          }
+        .catch((e) => {
+          console.log(e)
         })
     },
     getSetting () {
-      // eslint-disable-next-line no-undef
-      axios.post(`${this.baseurl}/api/setting/get-setting`, {user: this.userdata._id, setting: this.activeProfile._id}, this.headers)
-        .then(response => {
-          // this.numbers = response.data
-          if (response.data.data) {
-            this.user = response.data.data
-            this.user.twilio_number = response.data.data.number
-            if (response.data.data.number) {
+      var request = {
+        data: {user: this.userdata._id, setting: this.activeProfile._id},
+        url: 'setting/get-setting'
+      }
+      this.$store
+        .dispatch(post, request)
+        .then((response) => {
+          if (response.data) {
+            this.user = response.data
+            this.user.twilio_number = response.data.number
+            if (response.data.number) {
               // this.socket.emit('join_channel', this.user.number)
             }
-            this.getNumbers(response.data.data.type)
-            this.selected = response.data.data.type
+            this.getNumbers(response.data.type)
+            this.selected = response.data.type
           }
         })
-        .catch(error => {
-          if (error.response.status === 401) {
-            this.$swal({
-              icon: 'error',
-              title: 'Oops...',
-              text: error.response.data.message
-            })
-            this.$cookie.delete('access_token')
-            this.$router.push('/')
-          }
+        .catch((e) => {
+          console.log(e)
         })
     },
     deleteProfile () {
@@ -488,40 +521,38 @@ export default {
         denyButtonText: `No`
       }).then((result) => {
         if (result.isConfirmed) {
-          // eslint-disable-next-line no-undef
-          axios.post(`${this.baseurl}/api/profile/delete-profile`, {user: this.userdata._id, profile_id: this.activeProfile._id}, this.headers)
-            .then(response => {
-              this.$swal({
-                icon: 'success',
-                title: 'Success',
-                text: 'Profile deleted successfully!'
-              })
-              this.user.api_key = ''
-              this.user.number = ''
-              this.user.twilio_sid = ''
-              this.user.twilio_token = ''
-              this.user.twilio_number = ''
-              this.tNumbers = []
-              this.twilioNumbers = []
-              this.activeProfile = response.data.data
-              localStorage.removeItem('activeProfile')
-              this.$refs['my-modal'].hide()
-              this.$refs.childComponent.getallProfile()
-              var $this = this
-              setTimeout(function () {
-                $this.$refs.childComponent.activeFirstProfile()
-              }, 2000)
-            })
-            .catch(error => {
-              if (error.response.status === 401) {
+          var request = {
+            data: {user: this.userdata._id, profile_id: this.activeProfile._id},
+            url: 'profile/delete-profile'
+          }
+          this.$store
+            .dispatch(post, request)
+            .then((response) => {
+              if (response.data) {
                 this.$swal({
-                  icon: 'error',
-                  title: 'Oops...',
-                  text: error.response.data.message
+                  icon: 'success',
+                  title: 'Success',
+                  text: 'Profile deleted successfully!'
                 })
-                this.$cookie.delete('access_token')
-                this.$router.push('/')
+                this.user.api_key = ''
+                this.user.number = ''
+                this.user.twilio_sid = ''
+                this.user.twilio_token = ''
+                this.user.twilio_number = ''
+                this.tNumbers = []
+                this.twilioNumbers = []
+                this.activeProfile = response.data
+                localStorage.removeItem('activeProfile')
+                this.$refs['my-modal'].hide()
+                this.$refs.childComponent.getallProfile()
+                var $this = this
+                setTimeout(function () {
+                  $this.$refs.childComponent.activeFirstProfile()
+                }, 2000)
               }
+            })
+            .catch((e) => {
+              console.log(e)
             })
         } else if (result.isDenied) {
           // eslint-disable-next-line no-undef
@@ -539,9 +570,13 @@ export default {
         denyButtonText: `No`
       }).then((result) => {
         if (result.isConfirmed) {
-          // eslint-disable-next-line no-undef
-          axios.post(`${this.baseurl}/api/setting/delete-key`, {user: this.userdata._id, profile_id: this.activeProfile._id}, this.headers)
-            .then(response => {
+          var request = {
+            data: {user: this.userdata._id, profile_id: this.activeProfile._id},
+            url: 'setting/delete-key'
+          }
+          this.$store
+            .dispatch(post, request)
+            .then((response) => {
               this.$swal({
                 icon: 'success',
                 title: 'Success',
@@ -554,22 +589,12 @@ export default {
               this.user.twilio_number = ''
               this.tNumbers = []
               this.twilioNumbers = []
-              this.activeProfile = response.data.data
+              this.activeProfile = response.data
               this.$refs.childComponent.getallProfile()
             })
-            .catch(error => {
-              if (error.response.status === 401) {
-                this.$swal({
-                  icon: 'error',
-                  title: 'Oops...',
-                  text: error.response.data.message
-                })
-                this.$cookie.delete('access_token')
-                this.$router.push('/')
-              }
+            .catch((e) => {
+              console.log(e)
             })
-          // eslint-disable-next-line no-undef
-          // this.$swal.fire('Deleted!', '', 'success')
         } else if (result.isDenied) {
           // eslint-disable-next-line no-undef
           this.$swal.fire('setting not deleted', '', 'info')
@@ -579,25 +604,26 @@ export default {
     getNumbers (type) {
       var settings = this.user
       settings.type = type
-      // eslint-disable-next-line no-undef
-      axios.post(`${this.baseurl}/api/setting/get-number`, settings, this.headers)
-        .then(response => {
+      var request = {
+        data: settings,
+        url: 'setting/get-number'
+      }
+      if (type === 'telnyx') {
+        this.tNumbers = []
+      } else {
+        this.twilioNumbers = []
+      }
+      this.$store
+        .dispatch(post, request)
+        .then((response) => {
           if (type === 'telnyx') {
-            this.tNumbers = response.data.data.data
+            this.tNumbers = response.data.data
           } else {
-            this.twilioNumbers = response.data.data
+            this.twilioNumbers = response.data
           }
         })
-        .catch(error => {
-          if (error.response.status === 401) {
-            this.$swal({
-              icon: 'error',
-              title: 'Oops...',
-              text: error.response.data.message
-            })
-            this.$cookie.delete('access_token')
-            this.$router.push('/')
-          }
+        .catch((e) => {
+          console.log(e)
         })
     },
     handleSubmit (e) {
@@ -635,36 +661,25 @@ export default {
           setting: this.activeProfile._id,
           profile: this.user.profile
         }
-        // eslint-disable-next-line no-undef
-        axios.post(`${this.baseurl}/api/setting/create`, sendData, this.headers)
-          .then(response => {
+        var request = {
+          data: sendData,
+          url: 'setting/create'
+        }
+        this.$store
+          .dispatch(post, request)
+          .then((response) => {
             this.$swal({
               icon: 'success',
               title: 'Success',
               text: 'Settings saved successfully!'
             })
             this.$refs['my-modal'].hide()
-            this.activeProfile = response.data.data
+            this.activeProfile = response.data
             this.$refs.childComponent.getallProfile()
             this.$v.$reset()
           })
-          .catch(error => {
-            if (error.response.status === 401) {
-              this.$swal({
-                icon: 'error',
-                title: 'Oops...',
-                text: error.response.data.message
-              })
-              this.$cookie.delete('access_token')
-              this.$router.push('/')
-            }
-            if (error.response.status === 400) {
-              this.$swal({
-                icon: 'error',
-                title: 'Oops...',
-                text: error.response.data.message
-              })
-            }
+          .catch((e) => {
+            console.log(e)
           })
       }
     }
