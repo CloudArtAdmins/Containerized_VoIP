@@ -3,13 +3,13 @@
         <div class="login-box dark-mode p-3">
             <theme-button id-hide="false" />
             <h1 class="dark-mode">Login</h1>
-            <form @submit.prevent="handleSubmit" class="ml-2 mr-2" v-if="!otpScreen">
+            <form @submit.prevent="handleSubmit" class="ml-2 mr-2" v-if="!otpScreen && !keyScreen">
               <div class="form-group mt-4">
                 <b-input-group>
                   <b-input-group-prepend is-text>
                     <b-icon icon="person-fill"></b-icon>
                   </b-input-group-prepend>
-                <input class="form-control chat-input" type="text" placeholder="Username" id="login-input" v-model="user.email" :class="{ 'is-invalid': submitted && $v.user.email.$error }">
+                <input class="form-control chat-input" type="text" placeholder="Username" v-model="user.email" :class="{ 'is-invalid': submitted && $v.user.email.$error }" title="Enter Username">
                  </b-input-group>
                 <div v-if="submitted && $v.user.email.$error" class="invalid-feedback">
                   <span v-if="!$v.user.email.required">Username is required</span>
@@ -21,7 +21,7 @@
                   <b-input-group-prepend is-text>
                     <b-icon icon="shield-lock"></b-icon>
                   </b-input-group-prepend>
-                <input class="chat-input form-control" v-model="user.password"  type="password" placeholder="Password" id="login-input" :class="{ 'is-invalid': submitted && $v.user.password.$error }">
+                <input class="chat-input form-control" v-model="user.password"  type="password" placeholder="Password" :class="{ 'is-invalid': submitted && $v.user.password.$error }" title="Enter Password">
                </b-input-group>
                 <div v-if="submitted && $v.user.password.$error" class="invalid-feedback">
                     <span v-if="!$v.user.password.required">Password is required</span>
@@ -32,32 +32,39 @@
                 <button class="btn btn-success mt-3" type="submit" id="login-button">Login</button>
               </div>
               <div class="my-2 small" v-if="signUpOption">
-                Don’t have an account yet? <router-link to="/signup" class="mx-2"> Sign up</router-link>
+                Don’t have an account yet? <router-link :to="signupRoute" class="mx-2"> Sign up</router-link>
               </div>
               <div  class="d-grid d-md-flex mt-2 small" v-else>
                 New registrations are disabled
               </div>
             </form>
-            <form class="ml-2 mr-2" v-bind:class="{ 'd-none': !otpScreen }">
-              <div class="form-group mb-2 mt-4">
-                <input class="chat-input form-control" v-model="otpForm.otp"  type="text" placeholder="OTP" :class="{ 'is-invalid': submitted2 && otpError }">
+            <form class="ml-2 mr-2 text-center" v-bind:class="{ 'd-none': !otpScreen }">
+              <div class="form-group my-4">
+                <label>Enter Verification Code</label>
+                <input class="totp" v-model="otpForm.otp"  type="form-control" maxlength="6" placeholder="000000" :class="{ 'is-invalid': submitted2 && otpError }">
                 <div v-if="submitted2 && otpError" class="invalid-feedback">
-                    <span>OTP is required</span>
+                    <span>Verification code is required</span>
                 </div>
               </div>
-              <div class="d-grid d-md-flex">
-                <!-- v-on:click="handleSubmit2($event)" -->
-                <button class="btn btn-success mt-3" type="button"  id="login-button">Submit</button>
+              <div class="text-center">
+                <button class="btn btn-success m-3 px-5" type="button" v-on:click="handleSubmit2($event)" id="login-button2">Verify</button>
               </div>
             </form>
+
+            <form class="ml-2 mr-2 text-center" v-if="keyScreen">
+              <div class="form-group my-4">
+                <label>Please connect your hardware key</label>
+              </div>
+            </form>
+
             <div class="d-flex my-4 justify-content-center">
-                 <a href="https://www.twitter.com/0perationP" target="_blank" aria-label="Twitter" title="Twitter">
+                 <a href="https://www.twitter.com/0perationP" target="_blank" rel="noopener noreferrer" aria-label="Twitter" title="Twitter">
                     <b-icon font-scale="2" icon="twitter" variant="secondary" class="mx-2"></b-icon>
                  </a>
-                 <a href="https://github.com/0perationPrivacy/" target="_blank" aria-label="Github" title="Github">
+                 <a href="https://github.com/0perationPrivacy/" target="_blank" rel="noopener noreferrer" aria-label="Github" title="Github">
                   <b-icon font-scale="2" icon="github" variant="secondary" class="mx-2"></b-icon>
                  </a>
-                 <a href="https://www.OperationPrivacy.com/Donate" target="_blank" aria-label="Donate" title="Donate">
+                 <a href="https://www.OperationPrivacy.com/Donate" target="_blank" rel="noopener noreferrer" aria-label="Donate" title="Donate">
                   <b-icon font-scale="2" icon="credit-card" variant="secondary" class="mx-2"></b-icon>
                  </a>
               </div>
@@ -82,6 +89,10 @@ export default {
       loginId: 0,
       signUpOption: false,
       versionOption: 'v1.0.0',
+      activeUser: {
+        user: null,
+        token: ''
+      },
       user: {
         email: '',
         password: ''
@@ -90,7 +101,10 @@ export default {
         otp: ''
       },
       submitted: false,
-      submitted2: false
+      submitted2: false,
+      signupRoute: '',
+      keyScreen: false,
+      keyTotpScreen: false
     }
   },
   validations: {
@@ -100,13 +114,51 @@ export default {
     }
   },
   mounted: function () {
-    if (this.$cookie.get('access_token')) {
-      this.$router.push('/dashboard')
-    }
+    this.signupRoute = `/${this.$route.params.appdirectory}/signup`
+    this.fnLogin()
     this.getsignup()
     this.getVersion()
   },
   methods: {
+    fnLogin () {
+      // console.log('login')
+      var request = {
+        url: 'auth/check-directoryname',
+        data: {dirname: this.$route.params.appdirectory}
+      }
+      this.$store
+        .dispatch(post, request)
+        .then((response) => {
+          if (this.$cookie.get('access_token')) {
+            // alert('login')
+            if (response.data.status === 'nodir' || response.data.status === 'no-name') {
+              this.$router.push(`/${response.data.dir}/dashboard`)
+            } else if (response.data.status === 'false') {
+              this.$router.push(`/404`)
+            } else if (response.data.status === 'true') {
+              this.$router.push(`/${response.data.dir}/dashboard`)
+            }
+          } else {
+            // alert(JSON.stringify(response.data))
+            if (response.data.status === 'nodir' && response.data.dir === 'voip') {
+              // this.$router.push(`/404`)
+              this.$router.push(`/${response.data.dir}`)
+            } else if (response.data.status === 'no-name' && response.data.dir === 'voip') {
+              this.$router.push(`/${response.data.dir}`)
+            } else if (response.data.status === 'false' || response.data.status === 'no-name') {
+              this.$router.push(`/404`)
+            }
+            // else if (response.data.status === 'nodir' && response.data.dir === 'voip') {
+            //   this.$router.push(`/${response.data.dir}`)
+            // }
+          }
+        })
+        .catch((e) => {
+          this.old_version = false
+          console.log(e)
+          // resolve(false)
+        })
+    },
     getsignup () {
       var request = {
         data: {},
@@ -115,7 +167,7 @@ export default {
       this.$store
         .dispatch(post, request)
         .then((response) => {
-          if (response.data === 'on') {
+          if (response && response.data === 'on') {
             this.signUpOption = true
           } else {
             this.signUpOption = false
@@ -133,7 +185,9 @@ export default {
       this.$store
         .dispatch(post, request)
         .then((response) => {
-          this.versionOption = response.data
+          if (response) {
+            this.versionOption = response.data
+          }
         })
         .catch((e) => {
           // this.signUpOption = false
@@ -154,39 +208,106 @@ export default {
       this.$store
         .dispatch(post, request)
         .then((response) => {
-          // console.log(response.data)
-          this.$cookie.set('access_token', response.token, 30)
-          this.$cookie.set('userdata', JSON.stringify(response.data), 30)
-          console.log(this.$cookie.get('access_token'))
-          console.log(this.$cookie.get('userdata'))
-          this.$router.push('/dashboard')
+          if (response) {
+            /* if (response.status === 'hardwarekey') {
+              this.activeUser.token = response.token
+              this.activeUser.user = response.data
+              this.keyScreen = true
+              this.otpScreen = false
+              this.login()
+            } */ if (response.status === 'mfa') {
+              this.activeUser.token = response.token
+              this.activeUser.user = response.data
+              this.otpScreen = true
+            } else {
+              this.$cookie.set('access_token', response.token, 30)
+              this.$cookie.set('userdata', JSON.stringify(response.data), 30)
+              this.$router.push(`/${this.$route.params.appdirectory}/dashboard`)
+            }
+          }
         })
         .catch((e) => {
           // this.signUpOption = false
         })
-    }
-    /* handleSubmit2 (e) {
+    },
+    /* login () {
+      try {
+        if (window.u2f && window.u2f.sign) {
+          console.log('============================login uf2 response==========================')
+          console.log(window.u2f)
+          console.log('============================/login uf2 response==========================')
+          console.log('============================sign response==========================')
+          console.log(window.u2f.sign)
+          console.log('============================/sign response==========================')
+          var request = {
+            data: {user: this.activeUser.user._id},
+            url: 'hardwarekey/login-key'
+          }
+          this.$store
+            .dispatch(post, request)
+            .then((result) => {
+              if (result) {
+                window.u2f.sign(result.appId, [result.challenge], [result], response => {
+                  console.log('============================loginResponse==========================')
+                  console.log(response)
+                  console.log('============================/loginResponse==========================')
+                  var request2 = {
+                    data: {loginResponse: response, result: result, user: this.activeUser.user._id},
+                    url: 'hardwarekey/login'
+                  }
+                  this.$store
+                    .dispatch(post, request2)
+                    .then((result) => {
+                      if (result) {
+                        this.$cookie.set('access_token', this.activeUser.token, 30)
+                        this.$cookie.set('userdata', JSON.stringify(this.activeUser.user), 30)
+                        this.activeUser.token = ''
+                        this.activeUser.user = null
+                        this.$router.push(`/${this.$route.params.appdirectory}/dashboard`)
+                        // console.log(result)
+                      }
+                    })
+                    .catch((e) => {
+
+                    })
+                })
+              }
+            })
+            .catch((e) => {
+
+            })
+        }
+      } catch (error) {
+        console.log(error)
+      }
+    }, */
+    handleSubmit2 (e) {
       this.submitted2 = true
       if (this.otpForm.otp.trim() !== '') {
-        axios.post(`${this.baseurl}/auth/otp-verify`, {user: this.loginId, otp: this.otpForm.otp})
-          .then(response => {
-            localStorage.setItem('access_token', response.data.token)
-            localStorage.setItem('userdata', JSON.stringify(response.data.data))
-            this.$router.push('/dashboard')
-          })
-          .catch(error => {
-            if (error.response.status === 401) {
-              this.$swal({
-                icon: 'error',
-                title: 'Oops...',
-                text: error.response.data.message
-              })
+        var request = {
+          data: { user: this.activeUser.user._id, verification_code: this.otpForm.otp },
+          url: 'auth/otp-verify'
+        }
+        this.$store
+          .dispatch(post, request)
+          .then((response) => {
+            if (response) {
+              if (response.status === 'true') {
+                this.$cookie.set('access_token', this.activeUser.token, 30)
+                this.$cookie.set('userdata', JSON.stringify(this.activeUser.user), 30)
+                this.activeUser.token = ''
+                this.activeUser.user = null
+                this.$router.push(`/${this.$route.params.appdirectory}/dashboard`)
+              }
             }
+          })
+          .catch((e) => {
+            // this.signUpOption = false
           })
       } else {
         this.otpError = true
       }
-    } */
+    }
   }
 }
 </script>

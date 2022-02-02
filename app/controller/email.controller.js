@@ -1,30 +1,52 @@
 const Validator = require('validatorjs');
 var Email = require('../model/email.model');
+var Setting = require('../model/setting.model');
 
 exports.create = async (req, res) => {
+    //return res.send(req.body);
     let rules = {
-        api_key: 'required',
-        sender_id: 'required'
+        email: 'required',
+        password: 'required',
+        to_email: 'required',
+        host: 'required',
+        port: 'required',
+        to_email: 'required',
+        sender_email: 'required'
     };
     let validation = new Validator(req.body, rules);
     if(validation.passes()){
         var storeData = {user: req.user.id};
         var checkemail = await Email.findOne(storeData)
         if(checkemail){
-            checkemail.api_key = req.body.api_key
-            checkemail.sender_id = req.body.sender_id
-            var saveData = checkemail.save()
+            checkemail.email = req.body.email
+            checkemail.password = req.body.password
+            checkemail.to_email = req.body.to_email
+            checkemail.host = req.body.host
+            checkemail.port = req.body.port
+            checkemail.secure = req.body.secure
+            checkemail.sender_email = req.body.sender_email
+            var saveData = await checkemail.save()
             if(saveData){
-                res.send({status:true, message:'Email setting updated!', data:checkemail});
+                res.send({status:true, message:'Email settings updated!', data:checkemail});
             }else{
-                res.status(400).json({status:'false',message:'Email setting not updated!'});
+                res.status(400).json({status:'false',message:'Email settings not updated!'});
             }
         }else{
-            var isSave = await Email.create({user: req.user.id, api_key:req.body.api_key,sender_id: req.body.sender_id});
+            var createData = {
+                user: req.user.id, 
+                email:req.body.email,
+                password: req.body.password, 
+                to_email:req.body.to_email,
+                host:req.body.host,
+                port: req.body.port, 
+                secure:req.body.secure,
+                sender_email: req.body.sender_email
+            };
+            var isSave = await Email.create(createData);
             if(isSave){
-                res.send({status:true, message:'Email setting saved!', data:isSave});
+                res.send({status:true, message:'Email settings saved!', data:isSave});
             }else{
-                res.status(400).json({status:false,message:'Email setting not saved!'});
+                res.status(400).json({status:false,message:'Email settings not saved!'});
             }
         }
     }else{
@@ -33,16 +55,35 @@ exports.create = async (req, res) => {
 };
 
 exports.delete = async (req, res) => {
-    var storeData = {user: req.user.id};
+    var storeData = {user: {$eq: req.user.id}};
     var checkemail = await Email.findOne(storeData)
     if(checkemail){
         var deleteEmail = checkemail.delete()
         if(deleteEmail){
-            res.send({status:true, message:'Email setting deleted!', data:deleteEmail});
+            res.send({status:true, message:'Email settings deleted!', data:deleteEmail});
         }else{
-            res.status(400).json({status:'false',message:'Email setting not deleted!'});
+            res.status(400).json({status:'false',message:'Email settings not deleted!'});
         }
     }else{
-        res.status(400).json({status:'false',message:'Email setting not found!'});
+        res.status(400).json({status:'false',message:'Email settings not found!'});
+    }
+};
+exports.getEmail  = async (req, res) => {
+    var storeData = {user: req.user.id };
+    var checkemail = await Email.findOne(storeData)
+    //console.log('checkemail');
+    // console.log(checkemail);
+    res.send({status:true, message:'Get Email Settings!', data:checkemail});
+};
+
+exports.saveSetting = async (req, res) => {
+    // var checkemail = await Setting.findById(req.body.setting_id)
+    var checkemail = await Setting.findOne({_id: { $eq: req.body.setting_id}})
+    if(checkemail){
+        checkemail.emailnotification = req.body.status
+        var updateData = await checkemail.save()
+        res.send({status:true, message:'settings updated!', data:checkemail});
+    }else{
+        res.status(400).json({status:'false',message:'settings not updated!'});
     }
 };

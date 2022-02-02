@@ -1,9 +1,6 @@
 import Vue from 'vue'
 import Router from 'vue-router'
 import Vuelidate from 'vuelidate'
-import Login from '@/components/Login'
-import Signup from '@/components/Signup'
-import Dashboard from '@/components/Dashboard'
 import { BootstrapVue, IconsPlugin } from 'bootstrap-vue'
 import InputTag from 'vue-input-tag'
 
@@ -23,19 +20,25 @@ export default new Router({
   mode: 'history',
   routes: [
     {
+      path: '/404',
+      component: () => import('@/components/ErrorPage')
+    },
+    {
       path: '/',
-      name: 'login',
-      component: Login
+      component: () => import('@/components/Login')
     },
     {
-      path: '/signup',
-      name: 'signup',
-      component: Signup
+      path: '/:appdirectory',
+      component: () => import('@/components/Login')
     },
     {
-      path: '/dashboard',
-      name: 'dashboard',
-      component: Dashboard
-    }
+      path: '/:appdirectory/signup',
+      component: () => import('@/components/Signup')
+    },
+    {
+      path: '/:appdirectory/dashboard',
+      component: () => import('@/components/Dashboard')
+    },
+    { path: '*', component: () => import('@/components/ErrorPage') }
   ]
 })
