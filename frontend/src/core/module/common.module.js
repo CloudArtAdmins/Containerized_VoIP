@@ -1,6 +1,5 @@
 import ApiService from '@/core/services/api.service'
 import router from '../../router'
-import Swal from 'sweetalert2'
 import Vue from 'vue'
 // action types
 export const VERIFY_AUTH = 'verifyAuth'
@@ -22,22 +21,21 @@ export default {
             resolve(data)
           })
           .catch(({ response }) => {
-            console.log(response)
             if (response.status === 401) {
-              Swal.fire({
+              Vue.swal.fire({
                 title: 'Error',
-                text: response.data.error,
+                text: 'Unauthorized Access!',
                 icon: 'error',
                 confirmButtonClass: 'btn btn-secondary',
                 heightAuto: false
               })
               Vue.cookie.delete('access_token')
               Vue.cookie.delete('userdata')
-              // localStorage.removeItem('access_token')
-              router.push('/')
+              var path = window.location.pathname.split('/')[1]
+              router.push(`/${path}/`)
             }
             if (response.status === 400) {
-              Swal.fire({
+              Vue.swal.fire({
                 title: 'Error',
                 text: response.data.message,
                 icon: 'error',
@@ -45,10 +43,13 @@ export default {
                 heightAuto: false
               })
             }
+            resolve(false)
           })
       })
     },
     [get] (context, request) {
+      console.log(window.location.pathname)
+      console.log(request)
       return new Promise(resolve => {
         ApiService.setHeader()
         ApiService.get(request.url)
@@ -57,7 +58,7 @@ export default {
           })
           .catch(({ response }) => {
             if (response.status === 401) {
-              Swal.fire({
+              Vue.swal.fire({
                 title: 'Error',
                 text: response.data.error,
                 icon: 'error',
@@ -66,11 +67,11 @@ export default {
               })
               Vue.cookie.delete('access_token')
               Vue.cookie.delete('userdata')
-              // localStorage.removeItem('access_token')
-              router.push('/')
+              var path = window.location.pathname.split('/')[1]
+              router.push(`/${path}/`)
             }
             if (response.status === 400) {
-              Swal.fire({
+              Vue.swal.fire({
                 title: 'Error',
                 text: response.data.message,
                 icon: 'error',
@@ -78,6 +79,7 @@ export default {
                 heightAuto: false
               })
             }
+            resolve(false)
           })
       })
     }

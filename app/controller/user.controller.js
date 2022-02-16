@@ -6,28 +6,23 @@ const moment = require('moment')
 
 var User = require('../model/user.model');
 const nodemailer = require('nodemailer');
+var Hardwarekey = require('../model/hardwarekey.model');
+var Contact = require('../model/contact.model');
+var Email = require('../model/email.model');
+var Message = require('../model/message.model'); 
+var Setting = require('../model/setting.model'); 
+const telnyxHelper = require('../helper/telnyx.helper');
+const twilioHelper = require('../helper/twilio.helper');
+
+const remoteVersion = 'https://raw.githubusercontent.com/0perationPrivacy/VoIP/main/version.md';
+const currentVersion = process.env.BASE_URL + 'version.md'; // read from local file version.md
 
 var jwt = require('jsonwebtoken');
 
+const Speakeasy = require("speakeasy");
+const QRCode = require("qrcode");
+
 exports.login = async (req, res) => {
-    /*const sgMail = require('@sendgrid/mail')
-    sgMail.setApiKey(`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`)
-    const msg = {
-    to: 'fvthakor11@gmail.com', // Change to your recipient
-    from: 'fvthakordeveloper@gmail.com', // Change to your verified sender
-    subject: 'Sending with SendGrid is Fun',
-    text: 'and easy to do anywhere, even with Node.js',
-    html: '<strong>and easy to do anywhere, even with Node.js</strong>',
-    }
-    sgMail
-    .send(msg)
-    .then(() => {
-        console.log('Email sent')
-    })
-    .catch((error) => {
-        console.error(error)
-    })
-  return*/
     let rules = {
         email: 'required',
         password: 'required'
@@ -35,7 +30,7 @@ exports.login = async (req, res) => {
     let validation = new Validator(req.body, rules);
     if(validation.passes()){
         var email = req.body.email.toLowerCase()
-        var userData = {email:email};
+        var userData = {email:{ $eq: email}};
         var user = await User.findOne(userData);
         //res.send(user);
         if(user){
@@ -43,39 +38,30 @@ exports.login = async (req, res) => {
             if(checkpassword){
                 var obj = {id:user.id,email:user.email,name:user.name};
                 var token = jwt.sign(obj, process.env.COOKIE_KEY);
-                //console.log(token)
-                //res.status(401).json({status:'false',message:'Unauthorized Access!'});
-                // return
-                //var strObj = JSON.stringify(obj);
-                //let buff = Buffer.from(strObj, "utf8");
-                //let base64data = buff.toString('base64');
                 user.token = token;
-                user.save();                
-                /*var min = 100000;
-                var max = 999999;
-                var otp = Math.floor(Math.random() * (max - min)) + min;
-                user.otp = otp;
-                user.save();
-                
-                let transporter = nodemailer.createTransport({
-                    host: "smtp.gmail.com",
-                    port: 587,
-                    secure: false, // true for 465, false for other ports
-                    auth: {
-                        user: process.env.EMAIL, // generated ethereal user
-                        pass: process.env.PASSWORD, // generated ethereal password
-                    },
-                });
-
-                transporter.sendMail({
-                    from: process.env.EMAIL, // sender address
-                    to: user.email, // list of receivers
-                    subject: "Verify OTP✔", // Subject line
-                    text: "Your otp is " +otp, // plain text body
-                  });
-                  var data = {_id:user._id, email:user.email};*/
-                  res.send({status:true, message:'user data!', data:user, token:token});
-                  return;
+                user.save();      
+                var status = 'true';
+                var harwarekey, mfa;
+                if(user.hardwarekey && user.hardwarekey === 'true'){
+                    var mfa = false
+                    if(user.mfa && user.mfa === 'true') {
+                        mfa = true;
+                    }
+                    status = 'hardwarekey';
+                    // harwarekey = false
+                    harwarekey = await Hardwarekey.find({ user:user._id, registrationComplete: true });
+                    // res.send({status:'hardwarekey', message:'user data!', data:user, token:token, harwarekey:harwarekey, mfa:mfa});
+                } else
+                if(user.mfa && user.mfa === 'true'){
+                    status = 'mfa';
+                    harwarekey = false
+                    mfa=true
+                }else{
+                    harwarekey = false;
+                    mfa = false;
+                }   
+                res.send({status:status, message:'user data!', data:user, token:token, harwarekey:harwarekey, mfa:mfa});
+                return;
             }else{
                 res.status(401).json({status:'false',message:'Unauthorized Access!'});
             }
@@ -88,18 +74,19 @@ exports.login = async (req, res) => {
 };
 //otp-verify
 exports.otpVerify = async (req, res) => {
-    var userData = {_id:req.body.user};
+    var userData = {_id:{$eq: req.body.user}};
     var user = await User.findOne(userData);
-    if(user && user.otp == req.body.otp){
-        var obj = {id:user.id,email:user.email,name:user.name};
-        var strObj = JSON.stringify(obj);
-        let buff = Buffer.from(strObj, "utf8");
-        let base64data = buff.toString('base64');
-        user.token = base64data;
-        user.save();
-        res.send({status:true, message:'user data!', data:user, token:base64data});
-    }else{
-        res.status(401).json({status:'false',message:'Unauhtorize user!'}); 
+    if(user){
+        var verifyData = Speakeasy.totp.verify({
+            secret: user.mfa_token,
+            encoding: 'base32',
+            token: req.body.verification_code
+        });
+        if(verifyData){
+            res.status(200).json({status:'true',data:[],message:'verified successfully!'});
+        }else{
+            res.status(400).json({status:'false',message:'Please enter valid verification code!'});
+        }
     }
 };
 
@@ -111,7 +98,7 @@ exports.register = async (req, res) => {
     let validation = new Validator(req.body, rules);
     if(validation.passes()){
         var email = req.body.email.toLowerCase()
-        var checkEmail = await User.findOne({email: email});
+        var checkEmail = await User.findOne({email: {$eq: email}});
         if(checkEmail){
             var errors = {errors: {email:['Username already exists!']}};
             res.status(400).send({status: false, errors:errors, data: []});
@@ -137,22 +124,300 @@ exports.getSignUpOption = async (req, res) => {
 };
 
 exports.getVersionOption = (req, res) => {
-    var version = process.env.APP_VERSION;
-    if(!version){
-        version = 'v0.0'
-    }
-    res.send({status:true, message:'version option!', data:version});  
+    var request = require('request');
+    request.get(currentVersion, async function (error, response, body) {
+       // console.log(body);
+       // console.log(error);
+        if (!error && response.statusCode == 200) {
+            if(isNaN(body)){
+                res.send({status:true, message:'Not a numeric value!', data:'v0.0'});
+            }else{
+                res.send({status:true, message:'version defined.', data:`v${body}`});
+            }
+        }else{
+            res.send({status:true, message:'version file not found!', data:'v0.0'});
+        }
+    });
 };
-exports.updateAllProfile = async (req, res) => {
-    var users = await User.find();
-    for (var i=0; i < users.length; i++) {
-        var email = users[i].email.toLowerCase()
-        var user = await User.findById(users[i]._id);
-        user.email = email;
-        user.save();
+exports.checkDirectoryName = (req, res) => {
+    var dir = process.env.APPDIRECTORY
+    if(dir){
+        if(req.body.dirname){
+            if(dir === req.body.dirname){
+                res.send({status:true, message:'APPDIRECTORY Matched!', data:{status:'true', dir: dir}});
+            } else {
+                res.send({status:true, message:'APPDIRECTORY Mismatch!', data:{status:'false', dir: dir}});
+            }
+        }else{
+            res.send({status:true, message:'APPDIRECTORY Mismatch!', data:{status:'no-name', dir: dir}});
+        }
+    }else{
+        if(req.body.dirname){
+            if('voip' === req.body.dirname){
+                res.send({status:true, message:'APPDIRECTORY not defined!', data:{status:'nodir', dir: 'voip'}});
+            }else{
+                res.send({status:true, message:'APPDIRECTORY Mismatch!', data:{status:'false', dir: dir}});
+            }
+        }else{
+            res.send({status:true, message:'APPDIRECTORY not defined!', data:{status:'no-name',  dir: 'voip'}});
+        }
     }
-    res.send(users)
 };
+exports.getUpdateVersion = (req, res) => {
+    var request = require('request');
+    request.get(remoteVersion, async function (error, response, body) {
+        if (!error && response.statusCode == 200) {
+            if(isNaN(body)){
+                res.send({update: 'false'});
+            }else{
+                // var curruntv = process.env.APP_VERSION
+                // curruntv = curruntv.replace("v", "").replace("-beta", "");
+                // console.log(body)
+                //console.log(currentVersion)
+                request.get(currentVersion, async function (error, response, body2) {
+                    if (!error && response.statusCode == 200) {
+                        if(isNaN(body2)){
+                            res.send({update: 'false'});
+                        }else{
+                            if(body2 < body){
+                                res.send({update: 'true'});
+                            }else{
+                                res.send({update: 'false'});
+                            }
+                        }
+                    }else{
+                        res.send({update: 'false'});
+                    }
+                });
+                // console.log(currentVersion)
+                // var current
+            }
+        }else{
+            res.send({update: 'false'});
+        }
+    });
+};
+
+exports.updateUserName = async (req, res) => {
+    let rules = {
+        email: 'required',
+    };
+    let validation = new Validator(req.body, rules);
+    if(validation.passes()){
+        var user = await User.findOne({ email: { $eq: req.body.email } , _id: { $ne: req.user.id } });
+        if(user){
+            res.status(400).json({status:'false',message:'username already exists!'});
+        }else{
+            // var checkUser = await User.findById(req.user.id);
+            var checkUser = await User.findOne({_id: { $eq: req.user.id }});
+            if(checkUser){
+                checkUser.email = req.body.email
+                checkUser.name = req.body.email
+                var saveEmail = await checkUser.save()
+                res.send({status:true, message:'username updated successfully!', data:checkUser});
+            }else{
+                res.status(400).json({status:'false',message:'User not found!'});
+            }
+        }
+    }else{
+        res.status(419).send({status: false, errors:validation.errors, data: []});
+    }
+}
+
+exports.getUser = async (req, res) => {
+    var user = await User.findOne({ _id: { $eq: req.user.id } });
+    if(user){
+        res.status(200).json({status:'true',data:user,message:'user get!'});
+    }else{
+        res.status(400).json({status:'false',message:'User not found!'});
+    }
+}
+
+exports.saveMfa = async (req, res) => {
+    let rules = {
+        status: 'required',
+    };
+    let validation = new Validator(req.body, rules);
+    if(validation.passes()){
+        var user = await User.findOne({ _id: { $eq: req.user.id } });
+        if(user){
+            if(req.body.status === 'true'){
+                if(req.body.qr === 'true'){
+                    const secretCode = Speakeasy.generateSecret({
+                        name: `Operation Privacy (${req.user.email})`,
+                      });
+                      user.mfa_token = secretCode.base32
+                      await user.save()
+                      var image = await QRCode.toDataURL(secretCode.otpauth_url)
+                      var respnse = {
+                          image: image,
+                          secret: secretCode.base32
+                      }
+                      res.send(respnse);
+                }else{
+                    var verifyData = Speakeasy.totp.verify({
+                        secret: user.mfa_token,
+                        encoding: 'base32',
+                        token: req.body.code
+                    });
+                    if(verifyData){
+                        user.mfa = 'true'
+                        await user.save()
+                        res.status(200).json({status:'true',data:user,message:'verified successfully!'});
+                    }else{
+                        res.status(400).json({status:'false',message:'Please enter valid verification code!'});
+                    }
+                }
+            }else{
+                user.mfa = req.body.status
+                await user.save()
+                res.status(200).json({status:'true',data:user,message:'status saved successfully!'});
+            }
+        }else{
+            // var checkUser = await User.findById(req.user.id);
+            var checkUser = await User.findOne({_id: { $eq: req.user.id }});
+            if(checkUser){
+                checkUser.email = req.body.email
+                checkUser.name = req.body.email
+                var saveEmail = await checkUser.save()
+                res.send({status:true, message:'username updated successfully!', data:checkUser});
+            }else{
+                res.status(400).json({status:'false',message:'User not found!'});
+            }
+        }
+    }else{
+        res.status(419).send({status: false, errors:validation.errors, data: []});
+    }
+}
+
+exports.updatePassword = async (req, res) => {
+    let rules = {
+        old_password: 'required',
+        password: 'required',
+        c_password: 'required'
+    };
+    let validation = new Validator(req.body, rules);
+    if(validation.passes()){
+        // var checkUser = await User.findById(req.user.id);
+        var checkUser = await User.findOne({_id: { $eq: req.user.id }});
+        if(checkUser){
+            var checkpassword = bcrypt.compareSync(req.body.old_password, checkUser.password);
+            if(checkpassword){
+                const hash = bcrypt.hashSync(req.body.password, saltRounds);
+                checkUser.password = hash
+                var saveEmail = await checkUser.save()
+                res.send({status:true, message:'Password updated successfully!', data:checkUser});
+            }else{
+                res.status(400).json({status:'false',message:'Please enter a valid old password!'});
+            }
+        }else{
+            res.status(400).json({status:'false',message:'User not found!'});
+        }
+    }else{
+        res.status(419).send({status: false, errors:validation.errors, data: []});
+    }
+}
+exports.passwordVerify = async(req, res) => {
+    let rules = {
+        password: 'required'
+    };
+    let validation = new Validator(req.body, rules);
+    if(validation.passes()){
+        var checkUser = await User.findOne({_id: {$eq: req.user.id }});
+        if(checkUser){
+            var checkpassword = bcrypt.compareSync(req.body.password, checkUser.password);
+            if(checkpassword){
+                res.send({status:'true', message:'Password checked!', data:checkUser});
+            }else{
+                res.status(400).json({status:'false',message:'please enter valid password!'});
+            }
+        }else{
+            res.status(400).json({status:'false',message:'User not found!'});
+        }
+    }else{
+        res.status(400).send({status: false, message:'Password required!', data: []});
+    }
+}
+exports.checkPassword = async (req, res) => {
+    let rules = {
+        password: 'required'
+    };
+    let validation = new Validator(req.body, rules);
+    if(validation.passes()){
+        // var checkUser = await User.findById(req.user.id);
+        var checkUser = await User.findOne({_id: {$eq: req.user.id }});
+        if(checkUser){
+            var checkpassword = bcrypt.compareSync(req.body.password, checkUser.password);
+            if(checkpassword){
+                var response = await deleteAllAccountData(req.user.id)
+                res.send(response)
+                // res.send({status:'true', message:'Password checked!', data:checkUser});
+            }else{
+                res.status(400).json({status:'false',message:'Please enter a valid password!'});
+            }
+        }else{
+            res.status(400).json({status:'false',message:'User not found!'});
+        }
+    }else{
+        res.status(400).send({status: false, message:'Password required!', data: []});
+    }
+}
+
+const deleteAllAccountData = (userid) => {
+    // console.log(outboundProfileid)
+    return new Promise(async (resolve,reject) =>  {
+        try{
+            var response = {status:'true', message:'Password checked!', data:[]}; 
+            await Contact.deleteMany({user: userid});
+            await Email.deleteMany({user: userid});
+            await Message.deleteMany({user: userid});
+            var settings =await Setting.find({user:{ $eq: userid}});
+            for(var i = 0; i < settings.length; i++) {
+                try{
+                    if(settings[i].type === 'telnyx'){
+                        if(settings[i].api_key && settings[i].sid){
+                            await telnyxHelper.updatePhoneNumber(settings[i].api_key, settings[i].sid)
+                        }
+                        if(settings[i].api_key && settings[i].sip_id){
+                            await telnyxHelper.deleteSIPApp(settings[i].api_key, settings[i].sip_id)
+                        }
+                        if(settings[i].api_key && settings[i].telnyx_outbound){
+                            await telnyxHelper.deleteOutboundVoice(settings[i].api_key, settings[i].telnyx_outbound)
+                        }
+                        if(settings[i].api_key && settings[i].telnyx_twiml){
+                            await telnyxHelper.deleteTexmlApp(settings[i].api_key, settings[i].telnyx_twiml)
+                        }
+                        if(settings[i]._id && settings[i].sid){
+                            await telnyxHelper.emptyMessageProfile(settings[i].api_key, settings[i].sid)
+                        }
+                        if(settings[i].api_key && settings[i].setting){
+                            await telnyxHelper.deleteMessageProfile(settings[i].api_key, settings[i].setting)
+                        }
+                    }
+                    if(settings[i].type === 'twilio' && settings[i].twilio_sid && settings[i].twilio_token){
+                        if(settings[i].app_key){
+                            await twilioHelper.removeAPIKey(settings[i].twilio_sid, settings[i].twilio_token, settings[i].app_key)
+                        }
+                        if(settings[i].app_key){
+                            await twilioHelper.deleteTwiml(settings[i].twilio_sid, settings[i].twilio_token, settings[i].twiml_app)
+                        }
+                        if(settings[i].app_key){
+                            await twilioHelper.unlinkNumber(settings[i].twilio_sid, settings[i].twilio_token, settings[i].sid)
+                        }
+                    }
+                }catch(error){
+
+                }
+            }
+            await Setting.deleteMany({user: userid});
+            await User.deleteOne({_id: userid});
+            resolve(response);
+        }catch(error){
+            console.log(error)
+            resolve(false);
+        }
+    });
+}
 
 
 

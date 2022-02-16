@@ -7,7 +7,7 @@
 
 :root {
     --background-color-primary: #ffffff;
-    --background-color-secondary: rgb(246, 246, 246);;
+    --background-color-secondary: rgb(246, 246, 246);
     --background-color-info: #dcd4cc;
     --accent-color: #cacaca;
     --text-primary-color: #222;
@@ -21,6 +21,8 @@
     --contact-highlighted: rgb(222, 222, 222);
     --contact-hover: rgb(233, 233, 233);
     --background-image-opacity: 0.8;
+    --text-button: #1c282f;
+
   }
   :root.dark-theme {
     --background-color-primary: rgb(18, 18, 18);
@@ -36,6 +38,7 @@
     --contact-highlighted: rgb(74, 74, 74);
     --contact-hover: rgb(59, 59, 59);
     --background-image-opacity: 0.4;
+    --text-button: #cacaca;
   }
   body{
       background: var(--background-color-secondary);
@@ -49,14 +52,16 @@
     box-sizing: border-box;
     position: fixed;
 }*/
-
+#sidebar-email-setting .close{
+    color: var(--text-primary-color) !important;
+}
   section {
     background-color: var(--background-color-primary);
   }
   .switch-label-mode{
     height: 38px !important;
       width: 80px !important;
-      top:5px !important ;
+      /* top:5px !important ; */
       right: 0 !important;
       float: right !important;
   }
@@ -253,7 +258,7 @@
     border: none;
     background-color: var(--background-color-secondary);
     color: var(--text-primary-color);
-    border-radius: inherit;
+    border-radius: unset; /* fixes Chromium cursor size on message search bar */
 }
 
 .input-search:focus {
@@ -470,6 +475,7 @@
     margin: 0.5em 0;
     line-height: 120%;
     font-size: 0.9em;
+    overflow-wrap: break-word;
 }
 
 .content img {
@@ -480,7 +486,7 @@
 .time {
     font-size: 0.6em;
     text-align: right;
-    margin-top: -7px;
+    font-style: italic;
 }
 
 .wrap-message {
@@ -548,6 +554,7 @@ a {
     flex: 1 1 auto;
     min-height: 1px;
     padding: 1.25rem;
+    background-color: var(--accent-color);
 }
 .card {
     overflow: hidden;
@@ -571,7 +578,7 @@ a {
     content:'coming soon'
    }
 
-body::after {
+/* body::after {
     z-index: 99;
     content: "beta";
     position: fixed;
@@ -588,7 +595,7 @@ body::after {
     line-height: 11px;
     -webkit-transform: rotate(45deg);
     transform: rotate(0deg);
-}
+} */
 
 .badge {
     border-radius: 0.5rem;
@@ -680,7 +687,7 @@ body::after {
       opacity: 0.1;
     }
   }
-/* remove outline fron chevron arrow when clicked */
+/* remove outline from chevron arrow when clicked */
 .bi {
     outline: none;
 }
@@ -743,3 +750,114 @@ body::after {
     color: var(--text-primary-color) !important;
     background-color: transparent !important;
 }
+
+/* dailer css */
+#modal-tall .modal-dialog {
+    max-width: 100%;
+    margin: 0;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 100vh;
+    display: flex;
+    position: fixed;
+    z-index: 100000;
+}
+
+.dialer-btn2 {
+    color: rgb(var(--text-button));
+    margin: 1rem;
+}
+.dialer-btn2:hover{
+    color: rgb(var(--text-button)); 
+}
+.dialer-btn2:active{
+    color: #212529; 
+}
+ 
+.vs__dropdown-toggle{
+    background: var(--background-color-secondary);
+}
+.vs__dropdown-toggle input {
+    color: var(--text-primary-color);
+}
+.vs__selected{
+    color: var(--text-primary-color) !important;
+}
+.vs__dropdown-menu {
+    background: var(--background-color-primary);
+    color: var(--text-primary-color) !important;
+} 
+
+.loading-bar {
+    width: 50%;
+    height: 2px;
+    margin-left: -15%;
+    border-radius: 2px;
+    background-color:var(--chat-you);
+    position: relative;
+    top: 50%;
+    left: 50%;
+    overflow:hidden;
+    z-index: 5;
+    transform:rotateY(0);
+    transition:transform .3s ease-in
+   }
+   .loading-bar .blue-bar {
+    height:100%;
+    width:68px;
+    position:absolute;
+    transform:translate(-34px);
+    background-color:var(--theme-orange);
+    border-radius: 2px;
+    animation:initial-loading 1.5s ease infinite
+   }
+   @keyframes initial-loading {
+    0% {
+     transform:translate(-34px)
+    }
+    50% {
+     transform:translate(96px)
+    }
+    to {
+     transform:translate(-34px)
+    }
+   }
+
+   .update_ribbon {
+    z-index: 99;
+    position: fixed;
+    width: auto;
+    height: 12px;
+    padding-right: 10px;
+    padding-left: 10px;
+    background: var(--theme-orange);
+    top: 0;
+    right: 160px;
+    text-align: center;
+    font-size: 8px;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: wheat !important;
+    line-height: 11px;
+    -webkit-transform: rotate(45deg);
+    transform: rotate(0deg);
+   }
+   .update_ribbon a {
+       color: inherit;
+       text-decoration: none;
+   }
+   .totp {
+    text-align: center;
+    font-weight: 800;
+    letter-spacing: 0.8rem;
+    width: 200px;
+    color: var(--accent-color);
+    border-radius: 5px;
+    font-size: 1.5em;
+   }
+   .clickcopy:hover {
+    border-color: var(--accent-color);
+    background: var(--contact-hover);
+  }

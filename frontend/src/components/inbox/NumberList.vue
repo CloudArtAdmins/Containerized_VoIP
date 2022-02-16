@@ -1,14 +1,20 @@
 <template>
   <div>
+    <div id="loader1" v-if="isLoading">
+      <div class="d-flex loader justify-content-center align-items-center">
+        <div class="sp sp-circle"></div>
+      </div>
+  </div>
     <div class="profile">
       <div class="d-flex flex-row bd-highlight align-items-center align-self-center">
         <div class="mt-2">
           <div class="d-flex flex-row bd-highlight">
+            <setting></setting>
             <div class="bd-highlight">
               <contact :contacts="contacts" @onaddContact="onaddContact"></contact>
             </div>
             <div class="bd-highlight">
-              <b-icon font-scale="1" icon="telephone" aria-hidden="true" class="m-2" title="Call"></b-icon>
+              <b-icon font-scale="1" icon="telephone" aria-hidden="true" class="m-2" title="Call" @click="$bvModal.show('modal-tall')"  style="cursor:pointer;"></b-icon>
             </div>
             <div class="bd-highlight">
               <b-icon  v-b-modal.modal-2 font-scale="1" icon="pencil-square" aria-hidden="true" class="m-2" title="Compose" style="cursor:pointer;"></b-icon>
@@ -35,11 +41,11 @@
               </div>
             </template>
             <b-dropdown-divider></b-dropdown-divider>
-            <b-dropdown-item-button v-b-modal.modal-1  v-if="activeProfile">
+            <!-- <b-dropdown-item-button v-b-modal.modal-1  v-if="activeProfile">
               <b-icon icon="gear-fill" aria-hidden="true"></b-icon>
               Settings
             </b-dropdown-item-button>
-            <b-dropdown-divider  v-if="activeProfile"></b-dropdown-divider>
+            <b-dropdown-divider  v-if="activeProfile"></b-dropdown-divider> -->
             <profile-view ref="childComponent" @clicked2="onClickChild2" @clicked="onClickChild" />
             <b-dropdown-item-button @click="logout()">
               <b-icon icon="power" aria-hidden="true"></b-icon>
@@ -47,22 +53,12 @@
             </b-dropdown-item-button>
           </b-dropdown>
         </div>
-        <!--<div class="icons mt-2">
-          <b-dropdown size="sm" class="dropDown"  variant="primary" toggle-class="text-decoration-none" no-caret>
-          <template #button-content>
-            <b-icon icon="three-dots-vertical" font-scale="1"></b-icon>
-          </template>
-          <b-dropdown-item href="#">Action</b-dropdown-item>
-          <b-dropdown-item href="#">Another action</b-dropdown-item>
-          <b-dropdown-item href="#">Something else here...</b-dropdown-item>
-        </b-dropdown>
-        </div>-->
       </div>
     </div>
     <div class="wrap-search">
       <div class="search">
         <i class="fa fa-search fa" aria-hidden="true"></i>
-        <input type="text" class="input-search" placeholder="Search" />
+        <input type="text" class="input-search" v-model="query" @keyup="searchContact()" placeholder="Search" />
       </div>
     </div>
     <div class="contact-list">
@@ -90,11 +86,12 @@
         </div>
       </div>
       <div
-        v-for="item in numbers"
+        v-for="item in search_numbers"
         :key="item._id"
         class="contact"
+        :id="`phone${item._id}`"
         v-on:click="firstChatShow(item)"
-        v-bind:class="{ activeChat: activeChat == item._id }"
+        v-bind:class="{ activeChat: activeChat == item._id}"
       >
         <b-icon
           font-scale="2"
@@ -102,20 +99,30 @@
           aria-hidden="true"
           class="mx-2 my-auto"
         ></b-icon>
-        <div class="contact-preview">
-          <div class="contact-text">
-            <h1 class="font-name" v-if="item.contact">{{item.contact.first_name}} {{item.contact.last_name}}</h1>
-            <h1 v-else class="font-name">{{ item._id }}</h1>
-            <p class="font-preview">{{ getValidString(item.message)  }}</p>
+        <div class="d-flex justify-content-between" style="width:100%">
+          <div class="contact-preview">
+            <div class="contact-text">
+              <h1 class="font-name" v-if="item.contact">{{item.contact.first_name}} {{item.contact.last_name}}</h1>
+              <h1 v-else class="font-name">{{ item._id }}</h1>
+              <p class="font-preview" v-if="item.message">{{ getValidString(item.message)  }}</p>
+              <p class="font-preview" v-else>
+                <span v-if="item.message_type == 'call'">
+                  <span v-if="item.type == 'send'"> Outbound </span>
+                  <span v-else> Inbound </span>
+                  Call
+                </span>
+              </p>
+            </div>
           </div>
-        </div>
-        <div class="contact-time">
-          <p class="">{{ item.created_at | moment("HH:mm") }}</p>
+
+          <div class="align-self-center text-end me-3">
+          <span class="time">{{ item.created_at | moment("lll") }}</span> <!-- Jan 1, 2000 10:00 AM -->
           <span
             class="badge message_count bg-success" :id="item._id"
             v-if="item.isview > 0"
             >{{ item.isview }}</span
           >
+          </div>
         </div>
       </div>
     </div>
@@ -247,7 +254,7 @@
                   style="cursor: pointer"
                   @click="deleteApiKey()"
                   title="Delete"
-                  v-if="user.api_key != ''"
+                  v-if="showDelete"
                 >
                   <b-icon
                     font-scale="1.5"
@@ -321,7 +328,7 @@
                 </div>
               </div>
               <div class="col-auto m-auto">
-                <span class="float-right" style="cursor: pointer;" @click="deleteApiKey()" title="Delete" v-if="user.api_key != ''">
+                <span class="float-right" style="cursor: pointer;" @click="deleteApiKey()" title="Delete" v-if="showDelete">
                   <b-icon font-scale="1.5" icon="trash" aria-hidden="true"></b-icon>
                 </span>
               </div>
@@ -343,9 +350,12 @@ import ProfileView from '@/components/setting/ProfileView.vue'
 import Contact from '@/components/setting/Contact.vue'
 import { required } from 'vuelidate/lib/validators'
 import { get, post } from '../../core/module/common.module'
+import PullToRefresh from 'pulltorefreshjs'
+import Setting from '@/components/setting/Setting.vue'
+import { EventBus } from '@/event-bus'
 export default {
   components: {
-    ProfileView, ThemeButton, Contact
+    ProfileView, ThemeButton, Contact, Setting
   },
   data () {
     return {
@@ -357,11 +367,14 @@ export default {
         twilio_number: '',
         profile: ''
       },
+      query: '',
+      isLoading: false,
       contacts: [],
       activeChat: '',
       submitted: false,
       messageListLoader: true,
       numbers: [],
+      search_numbers: [],
       baseurl: '',
       userdata: null,
       access_token: null,
@@ -369,11 +382,13 @@ export default {
       headers: null,
       tNumbers: [],
       twilioNumbers: [],
+      activeItem: null,
       options: [
         { text: 'Telnyx', value: 'telnyx' },
         { text: 'Twilio', value: 'twilio' }
       ],
-      selected: 'telnyx'
+      selected: 'telnyx',
+      showDelete: false
     }
   },
   validations: {
@@ -399,21 +414,74 @@ export default {
       }
     }
     this.onaddContact()
+    var $this = this
+    PullToRefresh.init({
+      mainElement: '.contact-list',
+      triggerElement: '.contact-list',
+      onRefresh () {
+        $this.pullRefreshFunction($this)
+        // $this.getNumberList()
+        // $this.getOneProfile()
+      },
+      distThreshold: 120,
+      distMax: 140
+    })
+    EventBus.$on('getOneProfile', (data) => {
+      try {
+        this.getOneProfile()
+      } catch (e) {
+        // console.log(e)
+      }
+    })
+    EventBus.$on('changeProfile', (data) => {
+      // console.log(data)
+      // this.getOneProfile()
+    })
+    EventBus.$on('contactAdded', (number) => {
+      this.getNumberList()
+      setTimeout(() => {
+        if (number === 'delete' || this.activeItem._id === number) {
+          var numberClass = document.getElementsByClassName(`activeChat`)
+          if (numberClass.length > 0) {
+            numberClass[0].click()
+          }
+        }
+      }, 1500)
+    })
   },
   methods: {
+    pullRefreshFunction ($this) {
+      $this.getNumberList()
+      $this.getOneProfile()
+      $this.refreshProfile()
+    },
+    searchContact () {
+      // console.log(this.numbers)
+      var search = new RegExp(this.query, 'i')
+      this.search_numbers = this.numbers.filter(item => {
+        if (search.test(item._id)) {
+          return search.test(item._id)
+        } else if (item.contact && search.test(item.contact.first_name)) {
+          return search.test(item.contact.first_name)
+        } else if (item.contact && search.test(item.contact.last_name)) {
+          return search.test(item.contact.last_name)
+        } else if (search.test(item.message)) {
+          return search.test(item.message)
+        }
+      })
+    },
     onaddContact () {
-      // this.$emit('my_signal')
-      // this.$emit('clicked2', 'someValue')
       var request = {
         url: 'contact/get-all'
       }
       this.$emit('my_signal')
-      this.$emit('my_signal')
       this.$store
         .dispatch(get, request)
         .then((data) => {
-          this.contacts = data.data
-          this.$emit('onaddContact', data.data)
+          if (data) {
+            this.contacts = data.data
+            this.$emit('onaddContact', data.data)
+          }
         })
         .catch((e) => {
           console.log(e)
@@ -429,25 +497,29 @@ export default {
       return newStr2
     },
     getOneProfile () {
-      var request = {
-        data: { setting: this.activeProfile._id },
-        url: 'profile/getdata-one'
+      if (this.activeProfile._id !== undefined) {
+        var request = {
+          data: { setting: this.activeProfile._id },
+          url: 'profile/getdata-one'
+        }
+        this.$store
+          .dispatch(post, request)
+          .then((response) => {
+            if (response) {
+              this.activeProfile = response.data
+            }
+          })
+          .catch((e) => {
+            console.log(e)
+          })
       }
-      this.$store
-        .dispatch(post, request)
-        .then((response) => {
-          this.activeProfile = response.data
-        })
-        .catch((e) => {
-          console.log(e)
-        })
     },
     refreshProfile () {
       this.$refs.childComponent.getallProfile()
     },
     onClickChild2 (value) {
       this.activeProfile = value
-      this.getSetting()
+      // this.getSetting()
     },
     onClickChild (value) {
       this.activeProfile = value
@@ -463,6 +535,7 @@ export default {
         element.style.display = 'none'
       }
       this.activeChat = id._id
+      this.activeItem = id
       localStorage.setItem('activenumber', JSON.stringify(id))
       this.$emit('clicked', id)
       // this.$emit('messageRefresh', true)
@@ -471,7 +544,7 @@ export default {
     logout () {
       this.$cookie.delete('access_token')
       this.$cookie.delete('userdata')
-      this.$router.push('/')
+      window.location.href = `/${this.$route.params.appdirectory}/`
     },
     getNumberList () {
       this.numbers = []
@@ -482,12 +555,24 @@ export default {
       this.$store
         .dispatch(post, request)
         .then((response) => {
-          this.numbers = response
-          this.messageListLoader = false
+          if (response) {
+            this.numbers = response
+            this.messageListLoader = false
+            this.searchContact()
+          }
         })
         .catch((e) => {
           console.log(e)
         })
+    },
+    hideShowDeleteIcon (response) {
+      if (response.type === 'telnyx' && response.api_key) {
+        this.showDelete = true
+      } else if (response.type === 'twilio' && response.twilio_sid) {
+        this.showDelete = true
+      } else {
+        this.showDelete = false
+      }
     },
     getSetting () {
       var request = {
@@ -497,8 +582,9 @@ export default {
       this.$store
         .dispatch(post, request)
         .then((response) => {
-          if (response.data) {
+          if (response && response.data) {
             this.user = response.data
+            this.hideShowDeleteIcon(response.data)
             this.user.twilio_number = response.data.number
             if (response.data.number) {
               // this.socket.emit('join_channel', this.user.number)
@@ -590,6 +676,7 @@ export default {
               this.tNumbers = []
               this.twilioNumbers = []
               this.activeProfile = response.data
+              this.hideShowDeleteIcon(response.data)
               this.$refs.childComponent.getallProfile()
             })
             .catch((e) => {
@@ -616,10 +703,12 @@ export default {
       this.$store
         .dispatch(post, request)
         .then((response) => {
-          if (type === 'telnyx') {
-            this.tNumbers = response.data.data
-          } else {
-            this.twilioNumbers = response.data
+          if (response) {
+            if (type === 'telnyx') {
+              this.tNumbers = response.data.data
+            } else {
+              this.twilioNumbers = response.data
+            }
           }
         })
         .catch((e) => {
@@ -661,24 +750,106 @@ export default {
           setting: this.activeProfile._id,
           profile: this.user.profile
         }
+        this.isLoading = true
         var request = {
           data: sendData,
-          url: 'setting/create'
+          url: 'setting/check-setting'
         }
         this.$store
           .dispatch(post, request)
           .then((response) => {
-            this.$swal({
-              icon: 'success',
-              title: 'Success',
-              text: 'Settings saved successfully!'
-            })
-            this.$refs['my-modal'].hide()
-            this.activeProfile = response.data
-            this.$refs.childComponent.getallProfile()
-            this.$v.$reset()
+            var isCall = false
+            if (response) {
+              if (this.selected === 'telnyx' && response.data.data.connection_id !== undefined && response.data.data.connection_id && response.data.data.connection_id !== '') {
+                isCall = true
+              }
+
+              if (this.selected === 'twilio') {
+                var appSidavilable = false
+                if (response.data.voiceApplicationSid !== undefined && response.data.voiceApplicationSid && response.data.voiceApplicationSid !== '') {
+                  isCall = true
+                  appSidavilable = true
+                }
+                if (!appSidavilable) {
+                  if (response.data.voiceUrl !== undefined && response.data.voiceUrl && response.data.voiceUrl !== '') {
+                    isCall = true
+                  }
+                }
+              }
+              if (isCall) {
+                this.$swal.fire({
+                  icon: 'warning',
+                  title: 'Call Setting',
+                  text: 'The call setting is already available. Do you want to override the call setting?',
+                  showDenyButton: true,
+                  confirmButtonText: 'Yes, override it',
+                  denyButtonText: `No, Keep old`
+                }).then((result) => {
+                  var updateCallSetting = false
+                  if (result.isConfirmed) {
+                    updateCallSetting = true
+                    sendData.override = 'true'
+                  } else if (result.isDenied) {
+                    updateCallSetting = true
+                    sendData.override = 'false'
+                  }
+                  if (updateCallSetting) {
+                    this.isLoading = true
+                    var request = {
+                      data: sendData,
+                      url: 'setting/create'
+                    }
+                    this.$store
+                      .dispatch(post, request)
+                      .then((response) => {
+                        if (response) {
+                          this.$refs['my-modal'].hide()
+                          this.activeProfile = response.data
+                          this.hideShowDeleteIcon(response.data)
+                          this.$refs.childComponent.getallProfile()
+                          EventBus.$emit('clicked', true)
+                          EventBus.$emit('changeProfile2', true)
+                          this.$v.$reset()
+                        }
+                        this.isLoading = false
+                      })
+                      .catch((e) => {
+                        this.isLoading = false
+                        console.log(e)
+                      })
+                  }
+                })
+              } else {
+                sendData.override = 'true'
+                var request = {
+                  data: sendData,
+                  url: 'setting/create'
+                }
+                this.$store
+                  .dispatch(post, request)
+                  .then((response) => {
+                    if (response) {
+                      this.$refs['my-modal'].hide()
+                      this.activeProfile = response.data
+                      this.hideShowDeleteIcon(response.data)
+                      this.$refs.childComponent.getallProfile()
+                      EventBus.$emit('clicked', true)
+                      EventBus.$emit('changeProfile2', true)
+                      this.$v.$reset()
+                    }
+                    this.isLoading = false
+                  })
+                  .catch((e) => {
+                    this.isLoading = false
+                    console.log(e)
+                  })
+              }
+              // console.log(response)
+            }
+            this.isLoading = false
           })
           .catch((e) => {
+            this.isLoading = false
             console.log(e)
           })
       }
@@ -709,5 +880,52 @@ export default {
     border-right: 0.3em solid transparent;
     border-bottom: 0;
     border-left: 0.3em solid transparent;
+}
+.sp {
+  width: 32px;
+  height: 32px;
+  clear: both;
+  margin: 20px auto;
+}
+
+/* Spinner Circle Rotation */
+.sp-circle {
+  border: 4px rgba(0, 0, 0, 0.25) solid;
+  border-top: 4px black solid;
+  border-radius: 50%;
+  -webkit-animation: spCircRot 0.6s infinite linear;
+  animation: spCircRot 0.6s infinite linear;
+}
+
+@-webkit-keyframes spCircRot {
+  from {
+    -webkit-transform: rotate(0deg);
+  }
+  to {
+    -webkit-transform: rotate(359deg);
+  }
+}
+@keyframes spCircRot {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(359deg);
+  }
+}
+#loader1{
+  position: absolute;
+  background: white;
+  height: 100%;
+  width: 100%;
+  z-index: 2050;
+  top: 0;
+  left: 0;
+  opacity: .3;
+}
+.loader{
+  height: 100%;
+  width:100%;
+  z-index: 2100;
 }
 </style>

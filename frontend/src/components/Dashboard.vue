@@ -1,5 +1,7 @@
 <template>
   <div id="wrapbody" class="wrap">
+    <check-dir />
+    <call-view :contacts="contacts" ref="callView" v-if="activeCallTab"></call-view>
   <div id="loader" v-if="isLoading">
       <div class="d-flex loader justify-content-center align-items-center">
         <div class="sp sp-circle"></div>
@@ -34,9 +36,9 @@
       <div class="chat-head">
         <b-icon
           font-scale="2"
-          icon="chevron-right"
+          icon="chevron-left"
           aria-hidden="true"
-          class="mx-2 my-auto d-sm-none"
+          class="mx-3 my-auto d-sm-none h2"
           v-b-toggle.sidebar-no-header
         ></b-icon>
         <b-icon
@@ -52,10 +54,18 @@
             </div>
             <div class="d-flex align-items-start align-self-center">
               <div class="mt-2 ml-4" >{{ activeChat._id }}</div>
+              &nbsp;&nbsp;&nbsp;
+              <span style="cursor: copy" title="Add Contact" @click="addContact(activeChat._id)" v-if="!activeChat.contact">
+                <b-icon font-scale="1.5" icon="plus-circle" aria-hidden="true"></b-icon>
+              </span>
             </div>
           </h1>
         </div>
-        <div class="d-flex m-auto">
+        <div class="d-flex m-auto" v-if="activeChat">
+          <span style="cursor: pointer" @click="makeCall()" title="Delete">
+            <b-icon font-scale="2" icon="telephone" aria-hidden="true"></b-icon>
+          </span>
+          &nbsp;&nbsp;&nbsp;
           <span style="cursor: pointer" @click="deletechat()" title="Delete">
             <b-icon font-scale="2" icon="trash" aria-hidden="true"></b-icon>
           </span>
@@ -65,6 +75,9 @@
         <div id="drop-area" style="z-index: 1;"  :class="uploadedImages.length > 0 ?'activeImageArea':'inactive'">
           <form class="my-form">
             <p>Upload multiple files by dragging and dropping images inside this box</p>
+            <div class="text-center m-auto">
+            <button type="button" class="btn btn-danger px-4" @click="hideImageDrag()">Cancel</button>
+            </div>
             <input type="file" id="fileElem" multiple accept="image/*" @change="handleFiles($event.target.files)">
             <!-- <label class="button" for="fileElem">Select some files</label> -->
           </form>
@@ -80,24 +93,11 @@
         </div>
       </div>
       <div class="wrap-chat" id="chat_body">
-        <div class="chat row" v-if="chatListLoader">
-          <div class="box-placeholder chat_loader">
-            <div class="excerpt p-4">
-              <div class="text line"></div>
-              <div class="text line"></div>
-              <div class="text"></div>
-            </div>
+          <div class="loading-bar" v-if="chatListLoader">
+            <div class="blue-bar"></div>
           </div>
-          <div class="box-placeholder chat_loader">
-            <div class="excerpt p-4">
-              <div class="text line"></div>
-              <div class="text line"></div>
-              <div class="text"></div>
-            </div>
-          </div>
-        </div>
         <!-- v-chat-scroll="{smooth: true, notSmoothOnInit: true}" -->
-        <div class="chat" id="chat-container" >
+        <div class="chat" id="chat-container" v-bind:class="{ 'opacitynone': chatListLoader }">
           <div v-if="activeChatData">
             <div v-for="message in messages" :key="message._id">
               <div
@@ -121,10 +121,15 @@
                       </a>
                     </span>
                   </span>
-                  {{ message.message }}
+                  <span v-if="message.datatype === 'call'">
+                    <span v-if="message.type === 'send'"> <b-icon icon="telephone-outbound-fill"></b-icon>&nbsp;&nbsp; Outbound</span>
+                    <span v-else><b-icon icon="telephone-inbound-fill"></b-icon>&nbsp;&nbsp; Inbound</span>
+                    Call( {{getMMSS(message.duration) }} )
+                  </span>
+                  <span v-else> {{ message.message }} </span>
                 </div>
                 <div class="time">
-                  {{ message.created_at | moment("HH:mm") }}
+                  {{ message.created_at | moment("LLL") }}  <!-- January 1, 2000 10:00 AM -->
                 </div>
               </div>
             </div>
@@ -161,12 +166,7 @@
     <b-modal ref="my-modal2" id="modal-2" size="lg" title="Compose Message" hide-footer>
       <span class="small text-secondary">Input (+) and country code followed by the 10 digit phone number. If no country code is provided (+1) is assumed. Multiple numbers will be sent as Bulk SMS (individual sms's to recipients). <span class="small text-center">[Telnyx does not support group texting]</span></span>
       <form @submit.prevent="handleSubmit2" class="ml-2 mr-2">
-        <div class="form-group mt-4">
-          <select class="form-control chat-input" v-model="selectedContact" @change="contactChangeEvent($event)">
-            <option value=""> Select Contact </option>
-            <option v-for="contact in contacts" :key="contact._id" :value="contact.number">{{contact.first_name}} {{contact.last_name}} - {{contact.number}}</option>
-          </select>
-        </div>
+        <v-select class="mt-4" v-model="selectedContact" @option:selected="contactChangeEvent($event)" :options="searchContacts"></v-select>
         <div class="form-group mt-4">
           <vue-tags-input class="form-control chat-input"
                v-model="sms.numbers"
@@ -214,10 +214,14 @@ import NumberList from './inbox/NumberList.vue'
 import VueTagsInput from '@johmun/vue-tags-input'
 import ThemeButton from '@/components/ThemeButton.vue'
 import { post } from '../core/module/common.module'
+import Setting from './setting/Setting.vue'
+import CallView from '@/components/CallView.vue'
+import CheckDir from '@/components/CheckDir.vue'
+import { EventBus } from '@/event-bus'
 const io = require('socket.io-client')
 export default {
   name: 'dashboard',
-  components: { NumberList, VueTagsInput, ThemeButton },
+  components: { NumberList, VueTagsInput, ThemeButton, Setting, CallView, CheckDir },
   data () {
     return {
       isLoading: false,
@@ -253,7 +257,9 @@ export default {
       vh: 0,
       modelMms: false,
       modelFileValu: '',
-      zoomImage: ''
+      zoomImage: '',
+      searchContacts: [],
+      activeCallTab: false
     }
   },
   created () {
@@ -263,6 +269,29 @@ export default {
     window.removeEventListener('resize', this.updateVw, {passive: true})
   },
   mounted: function () {
+    EventBus.$on('toggleLoader', () => {
+      this.toggleLoader()
+    })
+    EventBus.$on('contactAdded', (number) => {
+      if (this.activeChat._id === number) {
+        this.showChat(this.activeChat)
+      }
+    })
+    EventBus.$on('changeProfile2', () => {
+      this.activeChat = null
+      this.activeCallTab = false
+      setTimeout(() => {
+        this.activeCallTab = true
+      }, 1500)
+    })
+    EventBus.$on('changeProfile', () => {
+      this.activeChat = null
+      this.activeCallTab = false
+      setTimeout(() => {
+        this.activeCallTab = true
+      }, 1500)
+    })
+
     if (!this.$cookie.get('access_token')) {
       this.$router.push('/')
     }
@@ -286,7 +315,6 @@ export default {
     this.socket.emit('join_profile_channel', this.userdata._id.toString())
 
     this.socket.on('user_message', function (data) {
-      $this.notifyMe(data.number, data.message)
       if ($this.activeChatData) {
         $this.showChat($this.activeChat)
       } else {
@@ -294,6 +322,7 @@ export default {
         $this.$refs.numberList.refreshProfile()
       }
       $this.$refs.numberList.getNumberList()
+      $this.notifyMe(data.number, data.message)
     })
     this.headers = {
       headers: {
@@ -322,12 +351,26 @@ export default {
     }
   },
   methods: {
+    addContact (number) {
+      EventBus.$emit('addContact', number)
+    },
+    toggleLoader () {
+      if (this.isLoading) {
+        this.isLoading = false
+      } else {
+        this.isLoading = true
+      }
+    },
+    makeCall () {
+      if (this.activeChat) {
+        this.$refs.callView.makeCall(this.activeChat._id)
+      }
+    },
     messageRefresh () {
       this.messages = []
     },
     contactChangeEvent (e) {
-      console.log(this.sms.numbers)
-      var inputText = {'text': e.target.value, 'tiClasses': ['ti-valid']}
+      var inputText = {'text': e.code, 'tiClasses': ['ti-valid']}
       this.tags.push(inputText)
       // this.sms.numbers = e.target.value
 
@@ -336,6 +379,15 @@ export default {
     },
     onaddContact (data) {
       this.contacts = data
+      this.formatecontact(data)
+    },
+    formatecontact (contacts) {
+      var arrContact = []
+      for (var i = 0; i < contacts.length; i++) {
+        var contact = {label: `${contacts[i].first_name} ${contacts[i].last_name}`, code: contacts[i].number}
+        arrContact.push(contact)
+      }
+      this.searchContacts = arrContact
     },
     hiddenImage () {
       this.zoomImage = ''
@@ -453,7 +505,7 @@ export default {
       this.firstChatShow(value)
     },
     notifyMe (user, message) {
-      let msgIcon = 'https://www.operationprivacy.com/img/favicon/favicon.ico'
+      let msgIcon = require(`@/assets/img/icon.png`)
       if (!('Notification' in window)) {
         alert('This browser does not support desktop notification')
       } else if (Notification.permission === 'granted') {
@@ -529,6 +581,10 @@ export default {
       var numbers = [ activechat._id ]
       this.commonSendMessage(numbers, this.messageBody)
     },
+    hideImageDrag () {
+      this.uploadedImages = []
+      document.getElementById('drop-area').style.display = 'none'
+    },
     commonSendMessage (numbers, message) {
       var messageData = {user: this.userdata._id, numbers: numbers, message: message, profile: this.activeProfile, media: this.uploadedImages}
       var request = {
@@ -538,21 +594,23 @@ export default {
       this.$store
         .dispatch(post, request)
         .then((response) => {
-          this.messageBody = ''
-          this.sms.numbers = ''
-          this.sms.message = ''
-          this.uploadedImages = []
-          this.modelFileValu = ''
-          document.getElementById('drop-area').style.display = 'none'
-          this.tags = []
-          this.$refs.numberList.getNumberList()
-          // this.showChat(activechat)
-          if (this.activeChatData) {
-            this.showChat(this.activeChat)
-          }
-          this.$refs['my-modal2'].hide()
-          if (this.vw < 576) {
-            this.$refs['mySidebar2'].hide()
+          if (response) {
+            this.messageBody = ''
+            this.sms.numbers = ''
+            this.sms.message = ''
+            this.uploadedImages = []
+            this.modelFileValu = ''
+            document.getElementById('drop-area').style.display = 'none'
+            this.tags = []
+            this.$refs.numberList.getNumberList()
+            // this.showChat(activechat)
+            if (this.activeChatData) {
+              this.showChat(this.activeChat)
+            }
+            this.$refs['my-modal2'].hide()
+            if (this.vw < 576) {
+              this.$refs['mySidebar2'].hide()
+            }
           }
           this.isLoading = false
         })
@@ -583,17 +641,19 @@ export default {
       this.$store
         .dispatch(post, request)
         .then((response) => {
-          this.messages = response
-          this.chatListLoader = false
-          // var container = this.$el.querySelector('#chat-container')
-          // container.scrollTop = container.scrollHeight
-          setTimeout(function () {
-            var scroll = document.getElementById('chat-container')
-            scroll.scrollTop = scroll.scrollHeight
-            scroll.animate({scrollTop: scroll.scrollHeight})
-          }, 1000)
-          this.$refs.numberList.refreshProfile()
-          this.$refs.numberList.getOneProfile()
+          if (response) {
+            this.messages = response
+            // var container = this.$el.querySelector('#chat-container')
+            // container.scrollTop = container.scrollHeight
+            setTimeout(() => {
+              var scroll = document.getElementById('chat-container')
+              scroll.scrollTop = scroll.scrollHeight
+              scroll.animate({scrollTop: scroll.scrollHeight})
+              this.chatListLoader = false
+            }, 1000)
+            this.$refs.numberList.refreshProfile()
+            this.$refs.numberList.getOneProfile()
+          }
         })
         .catch((e) => {
           console.log(e)
@@ -639,11 +699,25 @@ export default {
     },
     getVh () {
       return Math.round(Math.max(document.documentElement.innerHeight || 0, window.innerHeight || 0))
+    },
+    getMMSS (time) {
+      // Hours, minutes and seconds
+      var mins = ~~((time % 3600) / 60)
+      var secs = ~~time % 60
+
+      // Output like "1:01" or "4:03:59" or "123:03:59"
+      var ret = ''
+      ret += '' + mins + ':' + (secs < 10 ? '0' : '')
+      ret += '' + secs
+      return ret
     }
   }
 }
 </script>
 <style scoped>
+.opacitynone{
+  opacity: 0;
+}
   .activeImageArea{
     display: block !important;
   }
@@ -763,5 +837,7 @@ p {
 .loader{
   height: 100%;
   width:100%;
+  z-index: 2100;
 }
+
 </style>
