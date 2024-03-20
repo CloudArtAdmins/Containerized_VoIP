@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const algorithm = "aes-256-cbc"; 
 const nodemailer = require("nodemailer")
+const openpgpEncrypt = require('nodemailer-openpgp').openpgpEncrypt;
 const twilio = require('twilio')
 
 const encryptedString = (message) => {
@@ -32,10 +33,10 @@ const decryptedString = (message) => {
     });
 }
 
-const sendEmail = (setting,email) => {
+const sendEmail = (setting, email) => {
     return new Promise(async (resolve) => {
         try {
-            let transporter = nodemailer.createTransport({
+            const transporter = nodemailer.createTransport({
                 host: setting.host, // "smtp.gmail.com",
                 port: setting.port, // 587,
                 secure: setting.secure, // true for 465, false for other ports
@@ -44,13 +45,22 @@ const sendEmail = (setting,email) => {
                     pass: setting.password, // process.env.PASSWORD, // generated ethereal password
                 },
             });
-            transporter.sendMail({
+
+            const mailOptions = {
                 from: setting.sender_email, // sender address
                 to: setting.to_email, // list of receivers
                 subject: email.subject, // Subject line
                 text:  email.email, // plain text body
                 html: email.html
-            });
+            };
+
+            if (setting.pgpEncryptEnabled === true) {
+                transporter.use('stream', openpgpEncrypt());
+                mailOptions.encryptionKeys = [setting.pgpPublicKey]
+                mailOptions.shouldEncrypt = true
+            }
+
+            transporter.sendMail(mailOptions);
             resolve(true);
         }catch (e){
             console.log(e);
@@ -66,7 +76,7 @@ const creatTwiml = (sid, token) => {
             var twiml = await client.applications.create({
                 voiceMethod: 'POST',
                 voiceUrl: '',
-                friendlyName: 'operationprivacy VoIPSuite '
+                friendlyName: 'Operation Privacy VoIPSuite'
             })
             resolve(twiml.sid)
         }catch (e){
@@ -76,6 +86,14 @@ const creatTwiml = (sid, token) => {
     });
 }
 
+const combineURLs = (...urls)  => {
+    let output = urls[0];
+    for (let i = 1; i < urls.length; i++) {
+        output = output.replace(/\/+$/, '') + '/' + urls[i].replace(/^\/+/, '');
+    }
+    return output;
+}
+
 module.exports = {
-    encryptedString, decryptedString, sendEmail, creatTwiml
+    encryptedString, decryptedString, sendEmail, creatTwiml, combineURLs
 }
